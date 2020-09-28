@@ -17,7 +17,7 @@ XData = namedtuple('XData', ('lobby_mode', 'mode', 'stage',
                              'player_b1', 'player_b2', 'player_b3', 'player_b4'))
 
 def sdata_to(sdata, device):
-    sdata.lobby_mode.to(device); sdata.lobby.to(device); sdata.mode.to(device); sdata.stage.to(device)
+    sdata.lobby_mode.to(device); sdata.mode.to(device); sdata.stage.to(device)
     sdata.a1_weapon.to(device); sdata.a1_rank.to(device); sdata.a1_level.to(device)
     sdata.a2_weapon.to(device); sdata.a2_rank.to(device); sdata.a2_level.to(device)
     sdata.a3_weapon.to(device); sdata.a3_rank.to(device); sdata.a3_level.to(device)
