@@ -17,15 +17,17 @@ XData = namedtuple('XData', ('lobby_mode', 'mode', 'stage',
                              'player_b1', 'player_b2', 'player_b3', 'player_b4'))
 
 def sdata_to(sdata, device):
-    sdata.lobby_mode.to(device); sdata.mode.to(device); sdata.stage.to(device)
-    sdata.a1_weapon.to(device); sdata.a1_rank.to(device); sdata.a1_level.to(device)
-    sdata.a2_weapon.to(device); sdata.a2_rank.to(device); sdata.a2_level.to(device)
-    sdata.a3_weapon.to(device); sdata.a3_rank.to(device); sdata.a3_level.to(device)
-    sdata.a4_weapon.to(device); sdata.a4_rank.to(device); sdata.a4_level.to(device)
-    sdata.b1_weapon.to(device); sdata.b1_rank.to(device); sdata.b1_level.to(device)
-    sdata.b2_weapon.to(device); sdata.b2_rank.to(device); sdata.b2_level.to(device)
-    sdata.b3_weapon.to(device); sdata.b3_rank.to(device); sdata.b3_level.to(device)
-    sdata.b4_weapon.to(device); sdata.b4_rank.to(device); sdata.b4_level.to(device)
+    new_sdata = SData(sdata.idx.to(device), sdata.period, sdata.game_ver, sdata.lobby_mode.to(device),
+                      sdata.lobby, sdata.mode.to(device), sdata.stage.to(device),
+                      sdata.a1_weapon.to(device), sdata.a1_rank.to(device), sdata.a1_level.to(device),
+                      sdata.a2_weapon.to(device), sdata.a2_rank.to(device), sdata.a2_level.to(device),
+                      sdata.a3_weapon.to(device), sdata.a3_rank.to(device), sdata.a3_level.to(device),
+                      sdata.a4_weapon.to(device), sdata.a4_rank.to(device), sdata.a4_level.to(device),
+                      sdata.b1_weapon.to(device), sdata.b1_rank.to(device), sdata.b1_level.to(device),
+                      sdata.b2_weapon.to(device), sdata.b2_rank.to(device), sdata.b2_level.to(device),
+                      sdata.b3_weapon.to(device), sdata.b3_rank.to(device), sdata.b3_level.to(device),
+                      sdata.b4_weapon.to(device), sdata.b4_rank.to(device), sdata.b4_level.to(device))
+    return new_sdata
     
 class Vocabulary(object):
     def __init__(self, sos_token=None, eos_token=None):

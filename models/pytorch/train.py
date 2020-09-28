@@ -58,7 +58,7 @@ def run_train(ds_path: str, epochs: int, batch_size: int, tf_block_size: int=12)
         ys = np.array([])
         losses = []
         for sdata, y in tqdm(dataloader, desc='Epoch: {}'.format(epoch + 1), leave=False):
-            sdata_to(sdata, device)
+            sdata = sdata_to(sdata, device)
             y.to(device)
             
             out = model(sdata)
