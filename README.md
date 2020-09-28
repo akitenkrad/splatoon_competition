@@ -1,6 +1,9 @@
 # splatoon_competition
 codes for prob.space splatoon competition
 
+## Data
+https://drive.google.com/drive/folders/1jRZlTGtGbYHGJsK0FDEkgwiwF66QxvNf?usp=sharing
+
 ## How to run pytorch model train
 
 ```bash
