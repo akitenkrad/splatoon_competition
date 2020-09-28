@@ -59,7 +59,7 @@ def run_train(ds_path: str, epochs: int, batch_size: int):
         losses = []
         for sdata, y in tqdm(dataloader, desc='Epoch: {}'.format(epoch + 1), leave=False):
             sdata = sdata_to(sdata, device)
-            y.to(device)
+            y = y.to(device)
             
             out = model(sdata)
             
