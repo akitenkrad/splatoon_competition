@@ -142,7 +142,7 @@ class TransformerBlock(nn.Module):
         return output, attention_weights
     
 class SimpleTransformer(nn.Module):
-    def __init__(self, n_lobby_modes: int, n_modes: int, n_stages: int, n_weapons: int, n_ranks: int, n_blocks: int):
+    def __init__(self, n_lobby_modes: int, n_modes: int, n_stages: int, n_weapons: int, n_ranks: int):
         super().__init__()
         self.weapon_embed = Embedding(n_weapons, n_weapons)
         self.rank_embed = Embedding(n_ranks, n_ranks)
@@ -165,7 +165,33 @@ class SimpleTransformer(nn.Module):
         self.mode_dim = self.mode_embed.embedding_dim
         self.stage_dim = self.stage_embed.embedding_dim
         
-        self.transformer_blocks = [TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim) for _ in range(n_blocks)]
+        self.tf_block_1 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+        self.tf_block_2 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+        self.tf_block_3 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+        self.tf_block_4 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+        self.tf_block_5 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+        self.tf_block_6 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+        self.tf_block_7 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+        self.tf_block_8 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+        self.tf_block_9 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+        self.tf_block_10 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+        self.tf_block_11 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+        self.tf_block_12 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+        
+        self.transformer_blocks = [
+            self.tf_block_1,
+            self.tf_block_2,
+            self.tf_block_3,
+            self.tf_block_4,
+            self.tf_block_5,
+            self.tf_block_6,
+            self.tf_block_7,
+            self.tf_block_8,
+            self.tf_block_9,
+            self.tf_block_10,
+            self.tf_block_11,
+            self.tf_block_12,
+        ]
         self.out = nn.Linear(self.lobby_mode_dim + self.mode_dim + self.stage_dim + self.player_dim * 8, 2)
         
         self.attention_weights = []

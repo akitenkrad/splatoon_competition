@@ -12,7 +12,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from .datasets import SplatoonDataset, sdata_to
 from .model import SimpleTransformer
 
-def run_train(ds_path: str, epochs: int, batch_size: int, tf_block_size: int=12):
+def run_train(ds_path: str, epochs: int, batch_size: int):
     
     # device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -31,7 +31,7 @@ def run_train(ds_path: str, epochs: int, batch_size: int, tf_block_size: int=12)
     dataloader = DataLoader(dataset, batch_size=batch_size)
     
     # prepare model
-    model = SimpleTransformer(n_lobby_modes, n_modes, n_stages, n_weapons, n_ranks, tf_block_size)
+    model = SimpleTransformer(n_lobby_modes, n_modes, n_stages, n_weapons, n_ranks)
     model = model.train().to(device)
     
     # prepare optimizer, criterion
@@ -68,9 +68,9 @@ def run_train(ds_path: str, epochs: int, batch_size: int, tf_block_size: int=12)
             loss.backward()
             optimizer.step()
          
-            outputs = np.hstack([outputs, out.argmax(axis=-1).numpy()])
-            ys = np.hstack([ys, y.numpy()])
-            losses.append(float(loss.detach().numpy()))
+            outputs = np.hstack([outputs, out.argmax(axis=-1).cpu().numpy()])
+            ys = np.hstack([ys, y.cpu().numpy()])
+            losses.append(float(loss.detach().cpu().numpy()))
             
         history.add_scalar('loss', np.mean(losses), epoch + 1)
         history.add_scalar('train_accuracy', accuracy_score(outputs, ys), epoch + 1)
@@ -96,7 +96,6 @@ def build_parser():
     parser.add_argument('--ds-path', type=str, help='dataset path')
     parser.add_argument('--epochs', type=int, default=100, help='epochs. default=100')
     parser.add_argument('--batch-size', type=int, default=8, help='batch size. default=8')
-    parser.add_argument('--tf-block-size', type=int, default=12, help='transformer block size. default=12')
     args = parser.parse_args()
     
     return args
@@ -104,5 +103,5 @@ def build_parser():
 if __name__ == '__main__':
     args = build_parser()
     
-    run_train(args.ds_path, args.epochs, args.batch_size, args.tf_block_size)
+    run_train(args.ds_path, args.epochs, args.batch_size)
     
