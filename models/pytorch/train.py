@@ -51,8 +51,8 @@ def run_train(ds_path: str, epochs: int, batch_size: int, tf_block_size: int=12)
         is_best = False
         
         # train
-        outputs = []
-        ys = []
+        outputs = np.array([])
+        ys = np.array([])
         losses = []
         for sdata, y in tqdm(dataloader, desc='Epoch: {}'.format(epoch + 1), leave=False):
             
@@ -62,13 +62,11 @@ def run_train(ds_path: str, epochs: int, batch_size: int, tf_block_size: int=12)
             loss = criterion(out, y)
             loss.backward()
             optimizer.step()
+         
+            outputs = np.hstack([outputs, out.argmax(axis=-1).numpy()])
+            ys = np.hstack([ys, y.numpy()])
+            losses.append(float(loss.detach().numpy()))
             
-            outputs.append(out.argmax(axis=-1).detach().cpu().numpy())
-            ys.append(y.detach().cpu().numpy())
-            losses.append(float(loss.detach().cpu().numpy()))
-            
-        outputs = np.array(outputs)
-        ys = np.array(ys)
         history.add_scalar('loss', np.mean(losses), epoch + 1)
         history.add_scalar('train_accuracy', accuracy_score(outputs, ys), epoch + 1)
         history.add_scalar('train_precision', precision_score(outputs, ys), epoch + 1)

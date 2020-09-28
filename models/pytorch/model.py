@@ -66,7 +66,7 @@ class FeedForward(nn.Module):
         self.linear_1 = nn.Linear(dim, d_ff)
         self.dropout = nn.Dropout(dropout)
         self.linear_2 = nn.Linear(d_ff, dim)
-        
+ 
     def forward(self, x):
         x = self.linear_1(x)
         x = self.dropout(F.relu(x))
@@ -106,7 +106,7 @@ class TransformerBlock(nn.Module):
         self.player_b2_cell = TransformerCell(player_dim)
         self.player_b3_cell = TransformerCell(player_dim)
         self.player_b4_cell = TransformerCell(player_dim)
-    
+ 
     def forward(self, xdata: XData):
         lobby_mode, lobby_mode_attn = self.lobby_mode_cell(xdata.lobby_mode)
         mode, mode_attn = self.mode_cell(xdata.mode)
@@ -171,6 +171,8 @@ class SimpleTransformer(nn.Module):
         self.attention_weights = []
         
     def forward(self, x):
+        self.attention_weights = []
+
         lobby_mode = self.lobby_mode_embed(x.lobby_mode)
         mode = self.mode_embed(x.mode)
         stage = self.stage_embed(x.stage)
