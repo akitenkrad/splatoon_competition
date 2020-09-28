@@ -9,10 +9,13 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-from .datasets import SplatoonDataset
+from .datasets import SplatoonDataset, sdata_to
 from .model import SimpleTransformer
 
 def run_train(ds_path: str, epochs: int, batch_size: int, tf_block_size: int=12):
+    
+    # device
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     # load dataset
     dataset = SplatoonDataset(str(Path(ds_path).absolute()))
@@ -29,7 +32,7 @@ def run_train(ds_path: str, epochs: int, batch_size: int, tf_block_size: int=12)
     
     # prepare model
     model = SimpleTransformer(n_lobby_modes, n_modes, n_stages, n_weapons, n_ranks, tf_block_size)
-    model = model.train()
+    model = model.train().to(device)
     
     # prepare optimizer, criterion
     optimizer = optim.Adam(model.parameters())
@@ -55,6 +58,8 @@ def run_train(ds_path: str, epochs: int, batch_size: int, tf_block_size: int=12)
         ys = np.array([])
         losses = []
         for sdata, y in tqdm(dataloader, desc='Epoch: {}'.format(epoch + 1), leave=False):
+            sdata_to(sdata, device)
+            y.to(device)
             
             out = model(sdata)
             
