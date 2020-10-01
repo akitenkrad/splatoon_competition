@@ -35,7 +35,8 @@ def run_train(ds_path: str, epochs: int, batch_size: int):
     model = model.train().to(device)
     
     # prepare optimizer, criterion
-    optimizer = optim.Adam(model.parameters())
+    optimizer = optim.Adam(model.parameters(), lr=1e-6)
+    # optimizer = optim.SGD(model.parameters(), lr=0.0001)
     criterion = nn.CrossEntropyLoss()
     
     # history
@@ -49,7 +50,10 @@ def run_train(ds_path: str, epochs: int, batch_size: int):
     os.makedirs(str(save_dir), exist_ok=True)
     
     # run
-    for epoch in tqdm(range(epochs)):
+    last_loss, last_acc, last_f1 = 0.0, 0.0, 0.0
+    epoch_desc_fmt = 'Loss:{:.3f} Acc:{:.3f} F1:{:.3f}'
+    epoch_pbar = tqdm(total=epochs)
+    for epoch in range(epochs):
         
         is_best = False
         
@@ -57,7 +61,10 @@ def run_train(ds_path: str, epochs: int, batch_size: int):
         outputs = np.array([])
         ys = np.array([])
         losses = []
-        for sdata, y in tqdm(dataloader, desc='Epoch: {}'.format(epoch + 1), leave=False):
+        batch_loss, batch_acc, batch_f1 = 0.0, 0.0, 0.0
+        batch_desc_fmt = 'Epoch:{} Loss:{:.6f} Acc:{:.6f} F1:{:.6f}'
+        batch_pbar = tqdm(total=len(dataloader), leave=False)
+        for sdata, y in dataloader:
             sdata = sdata_to(sdata, device)
             y.to(device)
             
@@ -68,15 +75,31 @@ def run_train(ds_path: str, epochs: int, batch_size: int):
             loss.backward()
             optimizer.step()
          
-            outputs = np.hstack([outputs, out.argmax(axis=-1).cpu().numpy()])
-            ys = np.hstack([ys, y.cpu().numpy()])
-            losses.append(float(loss.detach().cpu().numpy()))
+            batch_output = out.argmax(axis=-1).cpu().numpy()
+            batch_y = y.cpu().numpy()
+            batch_loss = float(loss.detach().cpu().numpy())
+            batch_acc = accuracy_score(batch_output, batch_y)
+            batch_f1 = f1_score(batch_output, batch_y)
+
+            batch_pbar.update(1)
+            batch_pbar.set_description(batch_desc_fmt.format(epoch + 1, batch_loss, batch_acc, batch_f1))
+
+            outputs = np.hstack([outputs, batch_output])
+            ys = np.hstack([ys, batch_y])
+            losses.append(batch_loss)
             
-        history.add_scalar('loss', np.mean(losses), epoch + 1)
-        history.add_scalar('train_accuracy', accuracy_score(outputs, ys), epoch + 1)
+        last_loss = np.mean(losses)
+        last_acc = accuracy_score(outputs, ys)
+        last_f1 = f1_score(outputs, ys)
+
+        epoch_pbar.update(1)
+        epoch_pbar.set_description(epoch_desc_fmt.format(last_loss, last_acc, last_f1))
+
+        history.add_scalar('loss', last_loss, epoch + 1)
+        history.add_scalar('train_accuracy', last_acc, epoch + 1)
         history.add_scalar('train_precision', precision_score(outputs, ys), epoch + 1)
         history.add_scalar('train_recall', recall_score(outputs, ys), epoch + 1)
-        history.add_scalar('train_f1', f1_score(outputs, ys), epoch + 1)
+        history.add_scalar('train_f1', last_f1, epoch + 1)
         
         cur_acc = accuracy_score(outputs, ys)
         if best_acc < cur_acc:
