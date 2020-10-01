@@ -12,7 +12,7 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from .datasets import SplatoonDataset, sdata_to
 from .model import SimpleTransformer
 
-def run_train(ds_path: str, epochs: int, batch_size: int):
+def run_train(ds_path: str, epochs: int, batch_size: int, checkpoint: str=''):
     
     # device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -28,14 +28,18 @@ def run_train(ds_path: str, epochs: int, batch_size: int):
     n_stages = len(dataset.stage_vocab)
     
     # split dataset
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    dataloader = DataLoader(dataset, batch_size=batch_size)
     
     # prepare model
     model = SimpleTransformer(n_lobby_modes, n_modes, n_stages, n_weapons, n_ranks)
+    if checkpoint:
+      model.load_state_dict(torch.load(checkpoint)['model_state_dict'])
     model = model.train().to(device)
     
     # prepare optimizer, criterion
-    optimizer = optim.Adam(model.parameters(), lr=1e-6)
+    optimizer = optim.Adam(model.parameters(), lr=1e-8)
+    if checkpoint:
+      optimizer.load_state_dict(torch.load(checkpoint)['optimizer_state_dict'])
     # optimizer = optim.SGD(model.parameters(), lr=0.0001)
     criterion = nn.CrossEntropyLoss()
     
@@ -66,7 +70,7 @@ def run_train(ds_path: str, epochs: int, batch_size: int):
         batch_pbar = tqdm(total=len(dataloader), leave=False)
         for sdata, y in dataloader:
             sdata = sdata_to(sdata, device)
-            y.to(device)
+            y = y.to(device)
             
             out = model(sdata)
             
@@ -109,16 +113,34 @@ def run_train(ds_path: str, epochs: int, batch_size: int):
         if is_best:
             best_path = save_dir / 'best.pth'
             torch.save(model.state_dict(), best_path)
-        
-        if (epoch + 1) % 10 == 0:
-            last_path = save_dir / 'last.pth'
+
+            checkpoint = save_dir / 'checkpoint_best.pth'
+            torch.save({
+              'epoch': epoch,
+              'model_state_dict': model.state_dict(),
+              'optimizer_state_dict': optimizer.state_dict(),
+              'loss': last_loss,
+              }, checkpoint)
+      
+        if (epoch + 1) % 5 == 0:
+            last_path = save_dir / 'last_at_{}.pth'.format(epoch + 1)
             torch.save(model.state_dict(), last_path)
             
+        # save checkpoint
+        checkpoint = save_dir / 'checkpoint.pth'
+        torch.save({
+          'epoch': epoch,
+          'model_state_dict': model.state_dict(),
+          'optimizer_state_dict': optimizer.state_dict(),
+          'loss': last_loss,
+          }, checkpoint)
+ 
 def build_parser():
     parser = ArgumentParser()
     parser.add_argument('--ds-path', type=str, help='dataset path')
     parser.add_argument('--epochs', type=int, default=100, help='epochs. default=100')
     parser.add_argument('--batch-size', type=int, default=8, help='batch size. default=8')
+    parser.add_argument('--checkpoint', type=str, default='', help='checkpoint path')
     args = parser.parse_args()
     
     return args
@@ -126,5 +148,5 @@ def build_parser():
 if __name__ == '__main__':
     args = build_parser()
     
-    run_train(args.ds_path, args.epochs, args.batch_size)
+    run_train(args.ds_path, args.epochs, args.batch_size, args.checkpoint)
     
