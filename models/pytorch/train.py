@@ -28,7 +28,7 @@ def run_train(ds_path: str, epochs: int, batch_size: int):
     n_stages = len(dataset.stage_vocab)
     
     # split dataset
-    dataloader = DataLoader(dataset, batch_size=batch_size)
+    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     
     # prepare model
     model = SimpleTransformer(n_lobby_modes, n_modes, n_stages, n_weapons, n_ranks)
