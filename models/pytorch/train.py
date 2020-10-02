@@ -97,98 +97,95 @@ def run_train(ds_path: str, epochs: int, batch_size: int, test_size: float=0.1, 
     os.makedirs(str(save_dir), exist_ok=True)
     
     # === run epoch ========================
-    epoch_pbar = tqdm(total=epochs, leave=True)
-    for epoch in range(epochs):
-        
-        is_best = False
-        
-        # === train ========================
-        outputs, ys, losses = np.array([]), np.array([]), []
-        train_pbar = tqdm(total=len(train_dl), leave=False)
-        for sdata, y in train_dl:
-            sdata = sdata_to(sdata, device)
-            y = y.to(device)
-            
-            out = model(sdata)
-            
-            # update parameters
-            loss = criterion(out, y)
-            loss.backward()
-            optimizer.step()
-         
-            batch_output = out.argmax(axis=-1).cpu().numpy()
-            batch_y = y.cpu().numpy()
-            batch_loss = float(loss.detach().cpu().numpy())
+    with tqdm(total=epochs, leave=True) as epoch_pbar:
+        for epoch in range(epochs):
 
-            train_pbar.update(1)
-            train_pbar.set_description('Epoch:{} Loss:{:.6f} Acc:{:.6f} F1:{:.6f}'.format(
-                epoch + 1,
-                batch_loss, 
-                accuracy_score(batch_output, batch_y),
-                f1_score(batch_output, batch_y)))
+            is_best = False
 
-            outputs = np.hstack([outputs, batch_output])
-            ys = np.hstack([ys, batch_y])
-            losses.append(batch_loss)
-            
-        history.add_train_value(epoch + 1, outputs, ys, np.mean(losses))
-        train_pbar.close()
+            # === train ========================
+            outputs, ys, losses = np.array([]), np.array([]), []
+            with tqdm(total=len(train_dl), leave=None) as train_pbar:
+                for sdata, y in train_dl:
+                    sdata = sdata_to(sdata, device)
+                    y = y.to(device)
 
-        # === test ========================
-        outputs, ys = np.array([]), np.array([])
-        test_pbar = tqdm(total=len(test_dl), leave=False)
-        for sdata, y in test_dl:
-            sdata = sdata_to(sdata, device)
-            y = y.to(device)
-            
-            out = model(sdata)
-            
-            batch_output = out.argmax(axis=-1).cpu().numpy()
-            batch_y = y.cpu().numpy()
-            
-            test_pbar.update(1)
-            test_pbar.set_description('Epoch:{} Loss:{:.6f} Acc:{:.6f} F1:{:.6f}'.format(
-                epoch + 1,
-                batch_loss, 
-                accuracy_score(batch_output, batch_y),
-                f1_score(batch_output, batch_y)))
+                    out = model(sdata)
 
-            outputs = np.hstack([outputs, batch_output])
-            ys = np.hstack([ys, batch_y])
-            
-        history.add_test_value(epoch + 1, outputs, ys)
-        test_pbar.close()
-        
-        # === save weights ==================
-        epoch_pbar.update(1)
-        epoch_pbar.set_description(history.description())
-        
-        if history.is_best:
-            best_path = save_dir / 'best.pth'
-            torch.save(model.state_dict(), best_path)
+                    # update parameters
+                    loss = criterion(out, y)
+                    loss.backward()
+                    optimizer.step()
 
-            checkpoint = save_dir / 'checkpoint_best.pth'
+                    batch_output = out.argmax(axis=-1).cpu().numpy()
+                    batch_y = y.cpu().numpy()
+                    batch_loss = float(loss.detach().cpu().numpy())
+
+                    train_pbar.update(1)
+                    train_pbar.set_description('Epoch:{} Loss:{:.6f} Acc:{:.6f} F1:{:.6f}'.format(
+                        epoch + 1,
+                        batch_loss, 
+                        accuracy_score(batch_output, batch_y),
+                        f1_score(batch_output, batch_y)))
+
+                    outputs = np.hstack([outputs, batch_output])
+                    ys = np.hstack([ys, batch_y])
+                    losses.append(batch_loss)
+
+                history.add_train_value(epoch + 1, outputs, ys, np.mean(losses))
+
+            # === test ========================
+            outputs, ys = np.array([]), np.array([])
+            with tqdm(total=len(test_dl), leave=None) as test_pbar:
+                for sdata, y in test_dl:
+                    sdata = sdata_to(sdata, device)
+                    y = y.to(device)
+
+                    out = model(sdata)
+
+                    batch_output = out.argmax(axis=-1).cpu().numpy()
+                    batch_y = y.cpu().numpy()
+
+                    test_pbar.update(1)
+                    test_pbar.set_description('Epoch:{} Loss:{:.6f} Acc:{:.6f} F1:{:.6f}'.format(
+                        epoch + 1,
+                        batch_loss, 
+                        accuracy_score(batch_output, batch_y),
+                        f1_score(batch_output, batch_y)))
+
+                    outputs = np.hstack([outputs, batch_output])
+                    ys = np.hstack([ys, batch_y])
+
+                history.add_test_value(epoch + 1, outputs, ys)
+
+            # === save weights ==================
+            epoch_pbar.update(1)
+            epoch_pbar.set_description(history.description())
+
+            if history.is_best:
+                best_path = save_dir / 'best.pth'
+                torch.save(model.state_dict(), best_path)
+
+                checkpoint = save_dir / 'checkpoint_best.pth'
+                torch.save({
+                  'epoch': epoch,
+                  'model_state_dict': model.state_dict(),
+                  'optimizer_state_dict': optimizer.state_dict(),
+                  'loss': history.loss,
+                  }, checkpoint)
+
+            if (epoch + 1) % 5 == 0:
+                last_path = save_dir / 'last_at_{}.pth'.format(epoch + 1)
+                torch.save(model.state_dict(), last_path)
+
+            # save checkpoint
+            checkpoint = save_dir / 'checkpoint.pth'
             torch.save({
               'epoch': epoch,
               'model_state_dict': model.state_dict(),
               'optimizer_state_dict': optimizer.state_dict(),
               'loss': history.loss,
               }, checkpoint)
-      
-        if (epoch + 1) % 5 == 0:
-            last_path = save_dir / 'last_at_{}.pth'.format(epoch + 1)
-            torch.save(model.state_dict(), last_path)
-            
-        # save checkpoint
-        checkpoint = save_dir / 'checkpoint.pth'
-        torch.save({
-          'epoch': epoch,
-          'model_state_dict': model.state_dict(),
-          'optimizer_state_dict': optimizer.state_dict(),
-          'loss': history.loss,
-          }, checkpoint)
  
-    epoch_pbar.close()
     
     
 def build_parser():
