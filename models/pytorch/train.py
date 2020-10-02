@@ -132,6 +132,7 @@ def run_train(ds_path: str, epochs: int, batch_size: int, test_size: float=0.1, 
             losses.append(batch_loss)
             
         history.add_train_value(epoch + 1, outputs, ys, np.mean(losses))
+        train_pbar.close()
 
         # === test ========================
         outputs, ys = np.array([]), np.array([])
@@ -156,9 +157,7 @@ def run_train(ds_path: str, epochs: int, batch_size: int, test_size: float=0.1, 
             ys = np.hstack([ys, batch_y])
             
         history.add_test_value(epoch + 1, outputs, ys)
-        
-        del train_pbar
-        del test_pbar
+        test_pbar.close()
         
         # === save weights ==================
         epoch_pbar.update(1)
@@ -189,7 +188,7 @@ def run_train(ds_path: str, epochs: int, batch_size: int, test_size: float=0.1, 
           'loss': history.loss,
           }, checkpoint)
  
-    del epoch_pbar
+    epoch_pbar.close()
     
     
 def build_parser():
