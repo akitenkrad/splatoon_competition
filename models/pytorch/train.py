@@ -12,13 +12,60 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 from .datasets import SplatoonDataset, sdata_to
 from .model import SimpleTransformer
 
-def run_train(ds_path: str, epochs: int, batch_size: int, checkpoint: str=''):
+class History(object):
+    def __init__(self):
+        self.history = SummaryWriter(log_dir='./log')
+        self.best_accuracy = -1.0
+        self.is_best = False
+        self.epoch = 0
+        self.loss = -1
+        self.train_accuracy, self.train_precision, self.train_recall, self.train_f1 = 0.0, 0.0, 0.0, 0.0
+        self.test_accuracy, self.test_precision, self.test_recall, self.test_f1 = 0.0, 0.0, 0.0, 0.0
+    
+    def add_train_value(self, epoch, outputs, ys, loss):
+        self.epoch = epoch
+        self.loss = loss
+        self.train_accuracy = accuracy_score(ys, outputs)
+        self.train_precision = precision_score(ys, outputs)
+        self.train_recall = recall_score(ys, outputs)
+        self.train_f1 = f1_score(ys, outputs)
+        
+        self.history.add_scalar('loss', self.loss, epoch)
+        self.history.add_scalar('train_accuracy', self.train_accuracy, epoch)
+        self.history.add_scalar('train_precision', self.train_precision, epoch)
+        self.history.add_scalar('train_recall', self.train_recall, epoch)
+        self.history.add_scalar('train_f1', self.train_f1, epoch)
+        
+        if self.best_accuracy < self.train_accuracy:
+            self.best_accuracy = self.train_accuracy
+            self.is_best = True
+        else:
+            self.is_best = False
+        
+    def add_test_value(self, epoch, outputs, ys):
+        self.test_accuracy = accuracy_score(ys, outputs)
+        self.test_precision = precision_score(ys, outputs)
+        self.test_recall = recall_score(ys, outputs)
+        self.test_f1 = f1_score(ys, outputs)
+        
+        self.history.add_scalar('test_accuracy', self.test_accuracy, epoch)
+        self.history.add_scalar('test_precision', self.test_precision, epoch)
+        self.history.add_scalar('test_recall', self.test_recall, epoch)
+        self.history.add_scalar('test_f1', self.test_f1, epoch)
+    
+    def description(self):
+        desc = 'Epoch:{} Loss:{:.6f} Tran-Acc:{:.6f} Train-F1:{:.6f} Test-Acc:{:.6f} Test-F1:{:.6f}'.format(
+            self.epoch, self.loss, self.train_accuracy, self.train_f1, self.test_accuracy, self.test_f1)
+        return desc
+
+def run_train(ds_path: str, epochs: int, batch_size: int, test_size: float=0.1, checkpoint: str=''):
     
     # device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     # load dataset
     dataset = SplatoonDataset(str(Path(ds_path).absolute()))
+    train_ds, test_ds = dataset.train_test_split(test_size=test_size)
     
     # read meta counts
     n_lobby_modes = len(dataset.lobby_mode_vocab)
@@ -28,47 +75,37 @@ def run_train(ds_path: str, epochs: int, batch_size: int, checkpoint: str=''):
     n_stages = len(dataset.stage_vocab)
     
     # split dataset
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
+    test_dl = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
     
-    # prepare model
+    # prepare model, optimizer, criterion
     model = SimpleTransformer(n_lobby_modes, n_modes, n_stages, n_weapons, n_ranks)
-    if checkpoint:
-      model.load_state_dict(torch.load(checkpoint)['model_state_dict'])
-    model = model.train().to(device)
-    
-    # prepare optimizer, criterion
     optimizer = optim.Adam(model.parameters(), lr=1e-8)
-    if checkpoint:
-      optimizer.load_state_dict(torch.load(checkpoint)['optimizer_state_dict'])
-    # optimizer = optim.SGD(model.parameters(), lr=0.0001)
     criterion = nn.CrossEntropyLoss()
     
-    # history
-    history = SummaryWriter(log_dir='./logs')
+    if checkpoint:
+      model.load_state_dict(torch.load(checkpoint)['model_state_dict'])
+      optimizer.load_state_dict(torch.load(checkpoint)['optimizer_state_dict'])
+      
+    model = model.train().to(device)
     
-    # best_acc
-    best_acc = 0
+    # history
+    history = History()
     
     # save dir
     save_dir = Path('./weights')
     os.makedirs(str(save_dir), exist_ok=True)
     
-    # run
-    last_loss, last_acc, last_f1 = 0.0, 0.0, 0.0
-    epoch_desc_fmt = 'Loss:{:.3f} Acc:{:.3f} F1:{:.3f}'
-    epoch_pbar = tqdm(total=epochs)
+    # === run epoch ========================
+    epoch_pbar = tqdm(total=epochs, leave=True)
     for epoch in range(epochs):
         
         is_best = False
         
-        # train
-        outputs = np.array([])
-        ys = np.array([])
-        losses = []
-        batch_loss, batch_acc, batch_f1 = 0.0, 0.0, 0.0
-        batch_desc_fmt = 'Epoch:{} Loss:{:.6f} Acc:{:.6f} F1:{:.6f}'
-        batch_pbar = tqdm(total=len(dataloader), leave=False)
-        for sdata, y in dataloader:
+        # === train ========================
+        outputs, ys, losses = np.array([]), np.array([]), []
+        train_pbar = tqdm(total=len(train_dl), leave=False)
+        for sdata, y in train_dl:
             sdata = sdata_to(sdata, device)
             y = y.to(device)
             
@@ -82,35 +119,52 @@ def run_train(ds_path: str, epochs: int, batch_size: int, checkpoint: str=''):
             batch_output = out.argmax(axis=-1).cpu().numpy()
             batch_y = y.cpu().numpy()
             batch_loss = float(loss.detach().cpu().numpy())
-            batch_acc = accuracy_score(batch_output, batch_y)
-            batch_f1 = f1_score(batch_output, batch_y)
 
-            batch_pbar.update(1)
-            batch_pbar.set_description(batch_desc_fmt.format(epoch + 1, batch_loss, batch_acc, batch_f1))
+            train_pbar.update(1)
+            train_pbar.set_description('Epoch:{} Loss:{:.6f} Acc:{:.6f} F1:{:.6f}'.format(
+                epoch + 1,
+                batch_loss, 
+                accuracy_score(batch_output, batch_y),
+                f1_score(batch_output, batch_y)))
 
             outputs = np.hstack([outputs, batch_output])
             ys = np.hstack([ys, batch_y])
             losses.append(batch_loss)
             
-        last_loss = np.mean(losses)
-        last_acc = accuracy_score(outputs, ys)
-        last_f1 = f1_score(outputs, ys)
+        history.add_train_value(epoch + 1, outputs, ys, np.mean(losses))
 
-        epoch_pbar.update(1)
-        epoch_pbar.set_description(epoch_desc_fmt.format(last_loss, last_acc, last_f1))
-
-        history.add_scalar('loss', last_loss, epoch + 1)
-        history.add_scalar('train_accuracy', last_acc, epoch + 1)
-        history.add_scalar('train_precision', precision_score(outputs, ys), epoch + 1)
-        history.add_scalar('train_recall', recall_score(outputs, ys), epoch + 1)
-        history.add_scalar('train_f1', last_f1, epoch + 1)
-        
-        cur_acc = accuracy_score(outputs, ys)
-        if best_acc < cur_acc:
-            best_acc = cur_acc
-            is_best = True
+        # === test ========================
+        outputs, ys = np.array([]), np.array([])
+        test_pbar = tqdm(total=len(test_dl), leave=False)
+        for sdata, y in test_dl:
+            sdata = sdata_to(sdata, device)
+            y = y.to(device)
             
-        if is_best:
+            out = model(sdata)
+            
+            batch_output = out.argmax(axis=-1).cpu().numpy()
+            batch_y = y.cpu().numpy()
+            
+            test_pbar.update(1)
+            test_pbar.set_description('Epoch:{} Loss:{:.6f} Acc:{:.6f} F1:{:.6f}'.format(
+                epoch + 1,
+                batch_loss, 
+                accuracy_score(batch_output, batch_y),
+                f1_score(batch_output, batch_y)))
+
+            outputs = np.hstack([outputs, batch_output])
+            ys = np.hstack([ys, batch_y])
+            
+        history.add_test_value(epoch + 1, outputs, ys)
+        
+        del train_pbar
+        del test_pbar
+        
+        # === save weights ==================
+        epoch_pbar.update(1)
+        epoch_pbar.set_description(history.description())
+        
+        if history.is_best:
             best_path = save_dir / 'best.pth'
             torch.save(model.state_dict(), best_path)
 
@@ -119,7 +173,7 @@ def run_train(ds_path: str, epochs: int, batch_size: int, checkpoint: str=''):
               'epoch': epoch,
               'model_state_dict': model.state_dict(),
               'optimizer_state_dict': optimizer.state_dict(),
-              'loss': last_loss,
+              'loss': history.loss,
               }, checkpoint)
       
         if (epoch + 1) % 5 == 0:
@@ -132,14 +186,18 @@ def run_train(ds_path: str, epochs: int, batch_size: int, checkpoint: str=''):
           'epoch': epoch,
           'model_state_dict': model.state_dict(),
           'optimizer_state_dict': optimizer.state_dict(),
-          'loss': last_loss,
+          'loss': history.loss,
           }, checkpoint)
  
+    del epoch_pbar
+    
+    
 def build_parser():
     parser = ArgumentParser()
     parser.add_argument('--ds-path', type=str, help='dataset path')
     parser.add_argument('--epochs', type=int, default=100, help='epochs. default=100')
     parser.add_argument('--batch-size', type=int, default=8, help='batch size. default=8')
+    parser.add_argument('--test-size', type=float, default=0.1, help='test size')
     parser.add_argument('--checkpoint', type=str, default='', help='checkpoint path')
     args = parser.parse_args()
     
@@ -148,5 +206,5 @@ def build_parser():
 if __name__ == '__main__':
     args = build_parser()
     
-    run_train(args.ds_path, args.epochs, args.batch_size, args.checkpoint)
+    run_train(args.ds_path, args.epochs, args.batch_size, args.test_size, args.checkpoint)
     
