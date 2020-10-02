@@ -5,6 +5,7 @@ import numpy as np
 import torch
 from datetime import datetime
 from collections import namedtuple
+from sklearn.model_selection import train_test_split
 
 SData = namedtuple('SData', ('idx', 'period', 'game_ver', 'lobby_mode', 'lobby', 'mode', 'stage',
                              'a1_weapon', 'a1_rank', 'a1_level', 'a2_weapon', 'a2_rank', 'a2_level',
@@ -32,6 +33,8 @@ def sdata_to(sdata, device):
 class Vocabulary(object):
     def __init__(self, sos_token=None, eos_token=None):
         self.__tokens = []
+        self.sos_token = sos_token
+        self.eos_token = eos_token
         if sos_token is not None:
             self.__tokens.append(sos_token)
         if eos_token is not None:
@@ -50,11 +53,25 @@ class Vocabulary(object):
     def idx2tok(self, index):
         return self.__tokens[index]
     
-class SplatoonDataset(torch.utils.data.IterableDataset):
+    def copy(self):
+        v = Vocabulary(self.sos_token, self.eos_token)
+        for token in self.__tokens:
+            v.add_token(token)
+        return v
+
+
+class SplatoonDataset(torch.utils.data.Dataset):
     
-    def __init__(self, filename):
+    def __init__(self, filename, phase='train', lines=[]):
+        assert phase in ['train', 'test']
+        
         self.filename = filename
-        self.__build_vocab()
+        self.phase = phase
+        if lines:
+            self.lines = lines
+        else:
+            self.lines = [l.strip() for idx, l in enumerate(open(filename)) if idx > 0]
+            self.__build_vocab()
         
     def __len__(self):
         return self.total
@@ -72,7 +89,8 @@ class SplatoonDataset(torch.utils.data.IterableDataset):
         b2_w, b2_r, b2_l = str(items[22]), str(items[23]), int(float(items[24]) if items[24] != '' else 0)
         b3_w, b3_r, b3_l = str(items[25]), str(items[26]), int(float(items[27]) if items[27] != '' else 0)
         b4_w, b4_r, b4_l = str(items[28]), str(items[29]), int(float(items[30]) if items[30] != '' else 0)
-        y = int(items[31])
+        
+        y = int(items[31]) if self.phase == 'train' else 0
         
         if with_vocab:
             sdata = SData(idx, period, game_ver,
@@ -91,6 +109,10 @@ class SplatoonDataset(torch.utils.data.IterableDataset):
                           b1_w, b1_r, b1_l, b2_w, b2_r, b2_l, b3_w, b3_r, b3_l, b4_w, b4_r, b4_l)
         return sdata, y
     
+    @property
+    def total(self):
+        return len(self.lines)
+    
     def __build_vocab(self):
         self.lobby_mode_vocab = Vocabulary()
         self.mode_vocab = Vocabulary()
@@ -99,69 +121,69 @@ class SplatoonDataset(torch.utils.data.IterableDataset):
         self.rank_vocab = Vocabulary()
         self.level_mean = 0
         self.level_std = 0
-        self.total = 0
         
-        with open(self.filename) as f_it:
-            
-            next(f_it)  # skip header
-            # count all data
-            for _ in f_it:
-                self.total += 1
-
-            # seek to the beginning of the file
-            f_it.seek(0)
-            next(f_it)  # skip header
-            
-            levels = []
+        levels = []
+        for line in tqdm(self.lines, desc='Building Vocabulary'):
         
-            for line in tqdm(f_it, desc='building vocabulary', total=self.total):
-                sdata, _ = self.preprocess(line)
+            sdata, _ = self.preprocess(line)
 
-                self.lobby_mode_vocab.add_token(sdata.lobby_mode)
-                self.mode_vocab.add_token(sdata.mode)
-                self.stage_vocab.add_token(sdata.stage)
+            self.lobby_mode_vocab.add_token(sdata.lobby_mode)
+            self.mode_vocab.add_token(sdata.mode)
+            self.stage_vocab.add_token(sdata.stage)
 
-                self.weapon_vocab.add_token(str(sdata.a1_weapon))
-                self.weapon_vocab.add_token(str(sdata.a2_weapon))
-                self.weapon_vocab.add_token(str(sdata.a3_weapon))
-                self.weapon_vocab.add_token(str(sdata.a4_weapon))
-                self.weapon_vocab.add_token(str(sdata.b1_weapon))
-                self.weapon_vocab.add_token(str(sdata.b2_weapon))
-                self.weapon_vocab.add_token(str(sdata.b3_weapon))
-                self.weapon_vocab.add_token(str(sdata.b4_weapon))
+            self.weapon_vocab.add_token(str(sdata.a1_weapon))
+            self.weapon_vocab.add_token(str(sdata.a2_weapon))
+            self.weapon_vocab.add_token(str(sdata.a3_weapon))
+            self.weapon_vocab.add_token(str(sdata.a4_weapon))
+            self.weapon_vocab.add_token(str(sdata.b1_weapon))
+            self.weapon_vocab.add_token(str(sdata.b2_weapon))
+            self.weapon_vocab.add_token(str(sdata.b3_weapon))
+            self.weapon_vocab.add_token(str(sdata.b4_weapon))
 
-                self.rank_vocab.add_token(str(sdata.a1_rank))
-                self.rank_vocab.add_token(str(sdata.a2_rank))
-                self.rank_vocab.add_token(str(sdata.a3_rank))
-                self.rank_vocab.add_token(str(sdata.a4_rank))
-                self.rank_vocab.add_token(str(sdata.b1_rank))
-                self.rank_vocab.add_token(str(sdata.b2_rank))
-                self.rank_vocab.add_token(str(sdata.b3_rank))
-                self.rank_vocab.add_token(str(sdata.b4_rank))
-                
-                levels.append(sdata.a1_level)
-                levels.append(sdata.a2_level)
-                levels.append(sdata.a3_level)
-                levels.append(sdata.a4_level)
-                levels.append(sdata.b1_level)
-                levels.append(sdata.b2_level)
-                levels.append(sdata.b3_level)
-                levels.append(sdata.b4_level)
+            self.rank_vocab.add_token(str(sdata.a1_rank))
+            self.rank_vocab.add_token(str(sdata.a2_rank))
+            self.rank_vocab.add_token(str(sdata.a3_rank))
+            self.rank_vocab.add_token(str(sdata.a4_rank))
+            self.rank_vocab.add_token(str(sdata.b1_rank))
+            self.rank_vocab.add_token(str(sdata.b2_rank))
+            self.rank_vocab.add_token(str(sdata.b3_rank))
+            self.rank_vocab.add_token(str(sdata.b4_rank))
             
-            self.level_mean = np.mean(levels)
-            self.level_std = np.std(levels)
+            levels.append(sdata.a1_level)
+            levels.append(sdata.a2_level)
+            levels.append(sdata.a3_level)
+            levels.append(sdata.a4_level)
+            levels.append(sdata.b1_level)
+            levels.append(sdata.b2_level)
+            levels.append(sdata.b3_level)
+            levels.append(sdata.b4_level)
             
-    def __line_mapper(self, line):
-        sdata, y = self.preprocess(line ,with_vocab=True)
+        self.level_mean = np.mean(levels)
+        self.level_std = np.std(levels)
+    
+    def __getitem__(self, index):
+        
+        target_line = self.lines[index]
+        sdata, y = self.preprocess(target_line, with_vocab=True)
         
         return sdata, y
+
+    def copy_vocab(self, dataset):
+        self.lobby_mode_vocab = dataset.lobby_mode_vocab.copy()
+        self.mode_vocab = dataset.mode_vocab.copy()
+        self.rank_vocab = dataset.rank_vocab.copy()
+        self.stage_vocab = dataset.stage_vocab.copy()
+        self.weapon_vocab = dataset.weapon_vocab.copy()
+        self.level_mean = dataset.level_mean
+        self.level_std = dataset.level_std
+        
+    def train_test_split(self, test_size=0.1):
+        train_lines, test_lines = train_test_split(self.lines, test_size=test_size)
+        train_ds = SplatoonDataset(self.filename, phase=self.phase, lines=train_lines)
+        test_ds = SplatoonDataset(self.filename, phase=self.phase, lines=test_lines)
+        
+        train_ds.copy_vocab(self)
+        test_ds.copy_vocab(self)
+        
+        return train_ds, test_ds
     
-    def __iter__(self):
-        f_itr = open(self.filename)
-        
-        # skip headers
-        next(f_itr)
-        
-        mapped_itr = map(self.__line_mapper, f_itr)
-        
-        return mapped_itr
