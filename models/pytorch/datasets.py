@@ -1,8 +1,8 @@
 import os
 from pathlib import Path
+import csv
 from tqdm import tqdm
 import numpy as np
-import pandas as pd
 import torch
 from datetime import datetime
 from collections import namedtuple
@@ -194,8 +194,16 @@ class SplatoonDataset(torch.utils.data.Dataset):
     
     def __load_weapon_data(self, weapon_data_path):
         weapon_data = {'': ('None', 'None', 0, 0, 0, 0)}
-        for idx, row in pd.read_csv(weapon_data_path).iterrows():
-            weapon_data[row.key] = (row.sub_weapon, row.special, row.range, row.power, row.rounds_per, row.iine)
+        for idx, row in enumerate(csv.reader(open(weapon_data_path))):
+            if idx == 0: continue
+            key = row[0]
+            sub_weapon = row[2]
+            special_weapon = row[3]
+            weapon_range = int(row[4])
+            weapon_power = int(row[5])
+            weapon_rounds_per = int(row[6])
+            weapon_iine = int(row[7])
+            weapon_data[key] = (sub_weapon, special_weapon, weapon_range, weapon_power, weapon_rounds_per, weapon_iine)
         return weapon_data
         
     def __build_vocab(self):
