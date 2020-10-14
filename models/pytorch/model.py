@@ -3,7 +3,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from dateutil.parser import parse as date_parse
-from .datasets import XData
 
 class Embedding(nn.Module):
     def __init__(self, vocab_size, embedding_dim):
@@ -18,16 +17,46 @@ class Embedding(nn.Module):
         return embedded
     
 class PlayerEmbedding(nn.Module):
-    def __init__(self, weapon_embed: nn.Embedding, rank_embed: nn.Embedding):
+    def __init__(self,
+                 weapon_embed: nn.Embedding,
+                 rank_embed: nn.Embedding,
+                 sub_weapon_embed: nn.Embedding,
+                 special_weapon_embed: nn.Embedding):
         super().__init__()
         self.weapon_embed = weapon_embed
         self.rank_embed = rank_embed
-        
-    def forward(self, weapon, rank, level):
+        self.sub_weapon_embed = sub_weapon_embed
+        self.special_weapon_embed = special_weapon_embed
+    
+    @property
+    def n_dim(self):
+        n_level, n_weapon_range, n_weapon_power, n_weapon_rounds_per, n_weapon_iine = 1, 1, 1, 1, 1
+        d = (self.weapon_embed.embedding_dim + 
+             self.rank_embed.embedding_dim +
+             self.sub_weapon_embed.embedding_dim +
+             self.special_weapon_embed.embedding_dim +
+             n_level + n_weapon_range + n_weapon_power + n_weapon_rounds_per + n_weapon_iine)
+        return d
+            
+            
+    def forward(self, weapon, rank, level, sub_weapon, special_weapon, weapon_range, weapon_power, weapon_rounds_per, weapon_iine):
         weapon_embedded = self.weapon_embed(weapon)
         rank_embedded = self.rank_embed(rank)
+        sub_weapon_embedded = self.sub_weapon_embed(sub_weapon)
+        special_weapon_embedded = self.special_weapon_embed(special_weapon)
         
-        feat = torch.cat([weapon_embedded, rank_embedded, level.unsqueeze(-1)], axis=1)
+        feat = torch.cat([
+            weapon_embedded,
+            rank_embedded,
+            sub_weapon_embedded,
+            special_weapon_embedded,
+            level.unsqueeze(-1),
+            weapon_range.unsqueeze(-1),
+            weapon_power.unsqueeze(-1),
+            weapon_rounds_per.unsqueeze(-1),
+            weapon_iine.unsqueeze(-1),
+            ], axis=1)
+        
         return feat
 
 class Attention(nn.Module):
@@ -95,134 +124,165 @@ class TransformerBlock(nn.Module):
         self.mode_cell = TransformerCell(mode_dim)
         self.stage_cell = TransformerCell(stage_dim)
         
-        self.player_a1_cell = TransformerCell(player_dim)
-        self.player_a2_cell = TransformerCell(player_dim)
-        self.player_a3_cell = TransformerCell(player_dim)
-        self.player_a4_cell = TransformerCell(player_dim)
-        
-        self.player_b1_cell = TransformerCell(player_dim)
-        self.player_b2_cell = TransformerCell(player_dim)
-        self.player_b3_cell = TransformerCell(player_dim)
-        self.player_b4_cell = TransformerCell(player_dim)
+        self.a_team_cell = TransformerCell(player_dim)
+        self.b_team_cell = TransformerCell(player_dim)
  
-    def forward(self, xdata: XData):
-        lobby_mode, lobby_mode_attn = self.lobby_mode_cell(xdata.lobby_mode)
-        mode, mode_attn = self.mode_cell(xdata.mode)
-        stage, stage_attn = self.stage_cell(xdata.stage)
+    def forward(self, x):
+        lobby_mode, lobby_mode_attn = self.lobby_mode_cell(x['lobby_mode'])
+        mode, mode_attn = self.mode_cell(x['mode'])
+        stage, stage_attn = self.stage_cell(x['stage'])
+ 
+        a_team, a_team_attn = self.a_team_cell(x['a_team'])
+        b_team, b_team_attn = self.b_team_cell(x['b_team'])
         
-        player_a1, player_a1_attn = self.player_a1_cell(xdata.player_a1)
-        player_a2, player_a2_attn = self.player_a2_cell(xdata.player_a2)
-        player_a3, player_a3_attn = self.player_a3_cell(xdata.player_a3)
-        player_a4, player_a4_attn = self.player_a4_cell(xdata.player_a4)
-        
-        player_b1, player_b1_attn = self.player_b1_cell(xdata.player_b1)
-        player_b2, player_b2_attn = self.player_b2_cell(xdata.player_b2)
-        player_b3, player_b3_attn = self.player_b3_cell(xdata.player_b3)
-        player_b4, player_b4_attn = self.player_b4_cell(xdata.player_b4)
-        
-        output = XData(lobby_mode, mode, stage,
-                       player_a1, player_a2, player_a3, player_a4,
-                       player_b1, player_b2, player_b3, player_b4)
+        output = {
+            'lobby_mode': lobby_mode,
+            'mode': mode,
+            'stage': stage,
+            'a_team': a_team,
+            'b_team': b_team,
+        }
+               
         attention_weights = {
             'lobby_mode': lobby_mode_attn,
             'mode': mode_attn,
             'stage': stage_attn,
-            'player_a1': player_a1_attn,
-            'player_a2': player_a2_attn,
-            'player_a3': player_a3_attn,
-            'player_a4': player_a4_attn,
-            'player_b1': player_b1_attn,
-            'player_b2': player_b2_attn,
-            'player_b3': player_b3_attn,
-            'player_b4': player_b4_attn,
+            'a_team': a_team,
+            'b_team': b_team,
         }
         
         return output, attention_weights
     
 class SimpleTransformer(nn.Module):
-    def __init__(self, n_lobby_modes: int, n_modes: int, n_stages: int, n_weapons: int, n_ranks: int):
+    def __init__(self,
+                 n_lobby_modes: int,
+                 n_modes: int,
+                 n_stages: int,
+                 n_weapons: int,
+                 n_sub_weapons: int,
+                 n_special_weapons: int,
+                 n_ranks: int,
+                 size='small',
+                 predict=False):
         super().__init__()
+        assert size in ['small', 'normal', 'large']
+        
+        self.size = size
+        self.predict = predict
         self.weapon_embed = Embedding(n_weapons, n_weapons)
+        self.sub_weapon_embed = Embedding(n_sub_weapons, n_sub_weapons)
+        self.special_weapon_embed = Embedding(n_special_weapons, n_special_weapons)
         self.rank_embed = Embedding(n_ranks, n_ranks)
         self.lobby_mode_embed = Embedding(n_lobby_modes, n_lobby_modes)
         self.mode_embed = Embedding(n_modes, n_modes)
         self.stage_embed = Embedding(n_stages, n_stages)
         
-        self.player_a1 = PlayerEmbedding(self.weapon_embed, self.rank_embed)
-        self.player_a2 = PlayerEmbedding(self.weapon_embed, self.rank_embed)
-        self.player_a3 = PlayerEmbedding(self.weapon_embed, self.rank_embed)
-        self.player_a4 = PlayerEmbedding(self.weapon_embed, self.rank_embed)
+        self.a_players = [
+            PlayerEmbedding(self.weapon_embed, self.rank_embed, self.sub_weapon_embed, self.special_weapon_embed),
+            PlayerEmbedding(self.weapon_embed, self.rank_embed, self.sub_weapon_embed, self.special_weapon_embed),
+            PlayerEmbedding(self.weapon_embed, self.rank_embed, self.sub_weapon_embed, self.special_weapon_embed),
+            PlayerEmbedding(self.weapon_embed, self.rank_embed, self.sub_weapon_embed, self.special_weapon_embed),
+            ]
         
-        self.player_b1 = PlayerEmbedding(self.weapon_embed, self.rank_embed)
-        self.player_b2 = PlayerEmbedding(self.weapon_embed, self.rank_embed)
-        self.player_b3 = PlayerEmbedding(self.weapon_embed, self.rank_embed)
-        self.player_b4 = PlayerEmbedding(self.weapon_embed, self.rank_embed)
+        self.b_players = [
+            PlayerEmbedding(self.weapon_embed, self.rank_embed, self.sub_weapon_embed, self.special_weapon_embed),
+            PlayerEmbedding(self.weapon_embed, self.rank_embed, self.sub_weapon_embed, self.special_weapon_embed),
+            PlayerEmbedding(self.weapon_embed, self.rank_embed, self.sub_weapon_embed, self.special_weapon_embed),
+            PlayerEmbedding(self.weapon_embed, self.rank_embed, self.sub_weapon_embed, self.special_weapon_embed),
+        ]
         
-        self.player_dim = self.weapon_embed.embedding_dim + self.rank_embed.embedding_dim + 1
+        self.player_dim = self.a_players[0].n_dim
         self.lobby_mode_dim = self.lobby_mode_embed.embedding_dim
         self.mode_dim = self.mode_embed.embedding_dim
         self.stage_dim = self.stage_embed.embedding_dim
         
-        self.tf_block_1 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
-        self.tf_block_2 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
-        self.tf_block_3 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
-        self.tf_block_4 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
-        self.tf_block_5 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
-        self.tf_block_6 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
-        # self.tf_block_7 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
-        # self.tf_block_8 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
-        # self.tf_block_9 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
-        # self.tf_block_10 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
-        # self.tf_block_11 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
-        # self.tf_block_12 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
-        
         self.transformer_blocks = [
-            self.tf_block_1,
-            self.tf_block_2,
-            self.tf_block_3,
-            self.tf_block_4,
-            self.tf_block_5,
-            self.tf_block_6,
-            # self.tf_block_7,
-            # self.tf_block_8,
-            # self.tf_block_9,
-            # self.tf_block_10,
-            # self.tf_block_11,
-            # self.tf_block_12,
+            TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
+            TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
+            TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
+            TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
+            TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
+            TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
         ]
-        self.out = nn.Linear(self.lobby_mode_dim + self.mode_dim + self.stage_dim + self.player_dim * 8, 2)
+        
+        if self.size == 'normal':
+            self.transformer_blocks += [
+                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
+                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
+                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
+                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
+                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
+                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
+            ]
+        
+        self.out = nn.Linear(self.lobby_mode_dim + self.mode_dim + self.stage_dim + self.player_dim * 2, 2)
+        self.out_softmax = torch.nn.Softmax(dim=1)
         
         self.attention_weights = []
         
     def forward(self, x):
+        '''
+        Args:
+            x: {
+                'idx': ID,
+                'period': PERIOD,
+                'game_ver': GAME VERSION,
+                'lobby_mode': LOBBY MODE
+                'lobby': LOBBY,
+                'mode': MODE,
+                'stage': STAGE
+                'a_players': [{
+                    'weapon': WEAPON, 'rank': RANK, 'level': LEVEL, 'sub_weapon': SUB_WEAPON, 'special_weapon': SPECIAL_WEAPON,
+                    'weapon_range': WEAPON_RANGE, 'weapon_power': WEAPON_POWER, 'weapon_rounds_per': WEAPON_ROUNDS_PER, 'weapon_iine': WEAPON_IINE,
+                    }],
+                'b_players': [{
+                    'weapon': WEAPON, 'rank': RANK, 'level': LEVEL, 'sub_weapon': SUB_WEAPON, 'special_weapon': SPECIAL_WEAPON,
+                    'weapon_range': WEAPON_RANGE, 'weapon_power': WEAPON_POWER, 'weapon_rounds_per': WEAPON_ROUNDS_PER, 'weapon_iine': WEAPON_IINE,
+                    }],
+                'y': Y
+            }       
+        '''
         self.attention_weights = []
 
-        lobby_mode = self.lobby_mode_embed(x.lobby_mode)
-        mode = self.mode_embed(x.mode)
-        stage = self.stage_embed(x.stage)
+        lobby_mode = self.lobby_mode_embed(x['lobby_mode'])
+        mode = self.mode_embed(x['mode'])
+        stage = self.stage_embed(x['stage'])
         
-        player_a1 = self.player_a1(x.a1_weapon, x.a1_rank, x.a1_level)
-        player_a2 = self.player_a2(x.a2_weapon, x.a2_rank, x.a2_level)
-        player_a3 = self.player_a3(x.a3_weapon, x.a3_rank, x.a3_level)
-        player_a4 = self.player_a4(x.a4_weapon, x.a4_rank, x.a4_level)
+        # weapon, rank, level, sub_weapon, special_weapon, weapon_range, weapon_power, weapon_rounds_per, weapon_iine
+        a_players = []
+        for player_x, player_layer in zip(x['a_players'], self.a_players):
+            a_players.append(player_layer(
+                player_x['weapon'], player_x['rank'], player_x['level'], player_x['sub_weapon'], player_x['special_weapon'],
+                player_x['weapon_range'], player_x['weapon_power'], player_x['weapon_rounds_per'], player_x['weapon_iine']
+            ))
         
-        player_b1 = self.player_b1(x.b1_weapon, x.b1_rank, x.b1_level)
-        player_b2 = self.player_b2(x.b2_weapon, x.b2_rank, x.b2_level)
-        player_b3 = self.player_b3(x.b3_weapon, x.b3_rank, x.b3_level)
-        player_b4 = self.player_b4(x.b4_weapon, x.b4_rank, x.b4_level)
+        b_players = []
+        for player_x, player_layer in zip(x['b_players'], self.b_players):
+            b_players.append(player_layer(
+                player_x['weapon'], player_x['rank'], player_x['level'], player_x['sub_weapon'], player_x['special_weapon'],
+                player_x['weapon_range'], player_x['weapon_power'], player_x['weapon_rounds_per'], player_x['weapon_iine']
+            ))
         
-        xdata = XData(lobby_mode, mode, stage,
-                      player_a1, player_a2, player_a3, player_a4,
-                      player_b1, player_b2, player_b3, player_b4)
+        a_team = torch.mean(torch.stack(a_players), axis=0)
+        b_team = torch.mean(torch.stack(b_players), axis=0)
+ 
+        data = {
+            'lobby_mode': lobby_mode,
+            'mode': mode,
+            'stage': stage,
+            'a_team': a_team,
+            'b_team': b_team,
+        }
         
         for block in self.transformer_blocks:
-            xdata, attention_weight = block(xdata)
+            data, attention_weight = block(data)
             self.attention_weights.append(attention_weight)
         
-        output = torch.cat([xdata.lobby_mode, xdata.mode, xdata.stage, 
-                            xdata.player_a1, xdata.player_a2, xdata.player_a3, xdata.player_a4,
-                            xdata.player_b1, xdata.player_b2, xdata.player_b3, xdata.player_b4], axis=-1)
+        output = torch.cat([data['lobby_mode'], data['mode'], data['stage'], data['a_team'], data['b_team']], axis=-1)
         output = self.out(output)
+        
+        if self.predict:
+            output = self.out_softmax(output)       
         
         return output
     

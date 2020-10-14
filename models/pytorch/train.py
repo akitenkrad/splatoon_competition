@@ -9,7 +9,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
-from .datasets import SplatoonDataset, sdata_to
+from .datasets import SplatoonDataset
 from .model import SimpleTransformer
 
 class History(object):
@@ -58,19 +58,21 @@ class History(object):
             self.epoch, self.loss, self.train_accuracy, self.train_f1, self.test_accuracy, self.test_f1)
         return desc
 
-def run_train(ds_path: str, epochs: int, batch_size: int, test_size: float=0.1, checkpoint: str=''):
+def run_train(ds_path: str, weapon_ds_path:str, epochs: int, batch_size: int, test_size: float=0.1, checkpoint: str=''):
     
     # device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     # load dataset
-    dataset = SplatoonDataset(str(Path(ds_path).absolute()))
+    dataset = SplatoonDataset(str(Path(ds_path).absolute()), str(Path(weapon_ds_path).absolute()), phase='train')
     train_ds, test_ds = dataset.train_test_split(test_size=test_size)
     
     # read meta counts
     n_lobby_modes = len(dataset.lobby_mode_vocab)
     n_modes = len(dataset.mode_vocab)
     n_weapons = len(dataset.weapon_vocab)
+    n_sub_weapons = len(dataset.sub_weapon_vocab)
+    n_special_weapons = len(dataset.special_weapon_vocab)
     n_ranks = len(dataset.rank_vocab)
     n_stages = len(dataset.stage_vocab)
     
@@ -79,14 +81,14 @@ def run_train(ds_path: str, epochs: int, batch_size: int, test_size: float=0.1, 
     test_dl = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
     
     # prepare model, optimizer, criterion
-    model = SimpleTransformer(n_lobby_modes, n_modes, n_stages, n_weapons, n_ranks)
+    model = SimpleTransformer(n_lobby_modes, n_modes, n_stages, n_weapons, n_sub_weapons, n_special_weapons, n_ranks)
     optimizer = optim.Adam(model.parameters(), lr=1e-8)
     criterion = nn.CrossEntropyLoss()
     
     if checkpoint:
       model.load_state_dict(torch.load(checkpoint)['model_state_dict'])
       optimizer.load_state_dict(torch.load(checkpoint)['optimizer_state_dict'])
-      
+    
     model = model.train().to(device)
     
     # history
@@ -100,16 +102,16 @@ def run_train(ds_path: str, epochs: int, batch_size: int, test_size: float=0.1, 
     with tqdm(total=epochs, leave=True) as epoch_pbar:
         for epoch in range(epochs):
 
-            is_best = False
-
+            optimizer.zero_grad()
+            
             # === train ========================
             outputs, ys, losses = np.array([]), np.array([]), []
             with tqdm(total=len(train_dl), leave=None) as train_pbar:
-                for sdata, y in train_dl:
-                    sdata = sdata_to(sdata, device)
-                    y = y.to(device)
+                for data in train_dl:
+                    data = SplatoonDataset.to(data, device)
+                    y = data['y']
 
-                    out = model(sdata)
+                    out = model(data)
 
                     # update parameters
                     loss = criterion(out, y)
@@ -135,27 +137,28 @@ def run_train(ds_path: str, epochs: int, batch_size: int, test_size: float=0.1, 
 
             # === test ========================
             outputs, ys = np.array([]), np.array([])
-            with tqdm(total=len(test_dl), leave=None) as test_pbar:
-                for sdata, y in test_dl:
-                    sdata = sdata_to(sdata, device)
-                    y = y.to(device)
+            with torch.no_grad():
+                with tqdm(total=len(test_dl), leave=None) as test_pbar:
+                    for data in test_dl:
+                        data = SplatoonDataset.to(data, device)
+                        y = data['y']
 
-                    out = model(sdata)
+                        out = model(data)
 
-                    batch_output = out.argmax(axis=-1).cpu().numpy()
-                    batch_y = y.cpu().numpy()
+                        batch_output = out.argmax(axis=-1).cpu().numpy()
+                        batch_y = y.cpu().numpy()
 
-                    test_pbar.update(1)
-                    test_pbar.set_description('Epoch:{} Loss:{:.6f} Acc:{:.6f} F1:{:.6f}'.format(
-                        epoch + 1,
-                        batch_loss, 
-                        accuracy_score(batch_output, batch_y),
-                        f1_score(batch_output, batch_y)))
+                        test_pbar.update(1)
+                        test_pbar.set_description('Epoch:{} Loss:{:.6f} Acc:{:.6f} F1:{:.6f}'.format(
+                            epoch + 1,
+                            batch_loss, 
+                            accuracy_score(batch_output, batch_y),
+                            f1_score(batch_output, batch_y)))
 
-                    outputs = np.hstack([outputs, batch_output])
-                    ys = np.hstack([ys, batch_y])
+                        outputs = np.hstack([outputs, batch_output])
+                        ys = np.hstack([ys, batch_y])
 
-                history.add_test_value(epoch + 1, outputs, ys)
+                    history.add_test_value(epoch + 1, outputs, ys)
 
             # === save weights ==================
             epoch_pbar.update(1)
@@ -173,7 +176,7 @@ def run_train(ds_path: str, epochs: int, batch_size: int, test_size: float=0.1, 
                   'loss': history.loss,
                   }, checkpoint)
 
-            if (epoch + 1) % 5 == 0:
+            if (epoch + 1) % 20 == 0:
                 last_path = save_dir / 'last_at_{}.pth'.format(epoch + 1)
                 torch.save(model.state_dict(), last_path)
 
@@ -191,6 +194,7 @@ def run_train(ds_path: str, epochs: int, batch_size: int, test_size: float=0.1, 
 def build_parser():
     parser = ArgumentParser()
     parser.add_argument('--ds-path', type=str, help='dataset path')
+    parser.add_argument('--weapon-ds-path', type=str, help='weapon dataset path')
     parser.add_argument('--epochs', type=int, default=100, help='epochs. default=100')
     parser.add_argument('--batch-size', type=int, default=8, help='batch size. default=8')
     parser.add_argument('--test-size', type=float, default=0.1, help='test size')
@@ -202,5 +206,5 @@ def build_parser():
 if __name__ == '__main__':
     args = build_parser()
     
-    run_train(args.ds_path, args.epochs, args.batch_size, args.test_size, args.checkpoint)
+    run_train(args.ds_path, args.weapon_ds_path, args.epochs, args.batch_size, args.test_size, args.checkpoint)
     

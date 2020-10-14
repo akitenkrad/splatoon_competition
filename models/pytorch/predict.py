@@ -38,7 +38,7 @@ def run_predict(ds_path: str, weights: str, outfile: str):
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
     
     # prepare model
-    model = SimpleTransformer(n_lobby_modes, n_modes, n_stages, n_weapons, n_ranks)
+    model = SimpleTransformer(n_lobby_modes, n_modes, n_stages, n_weapons, n_ranks, size='normal', predict=True)
     model.load_state_dict(torch.load(weights, map_location=device))
     model = model.eval().to(device)
     
@@ -48,9 +48,7 @@ def run_predict(ds_path: str, weights: str, outfile: str):
         sdata = sdata_to(sdata, device)
         
         out = model(sdata)
-        
         batch_output = out.argmax(axis=-1).cpu().numpy()
-        
         for idx, output in zip(sdata.idx, batch_output):
             outputs.append({'id': int(idx.cpu().numpy()), 'y': int(output)}) 
  
