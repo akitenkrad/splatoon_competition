@@ -177,18 +177,20 @@ class SimpleTransformer(nn.Module):
         self.mode_embed = Embedding(n_modes, n_modes)
         self.stage_embed = Embedding(n_stages, n_stages)
         
+        self.a_player_1 = PlayerEmbedding(self.weapon_embed, self.rank_embed, self.sub_weapon_embed, self.special_weapon_embed)
+        self.a_player_2 = PlayerEmbedding(self.weapon_embed, self.rank_embed, self.sub_weapon_embed, self.special_weapon_embed)
+        self.a_player_3 = PlayerEmbedding(self.weapon_embed, self.rank_embed, self.sub_weapon_embed, self.special_weapon_embed)
+        self.a_player_4 = PlayerEmbedding(self.weapon_embed, self.rank_embed, self.sub_weapon_embed, self.special_weapon_embed)
         self.a_players = [
-            PlayerEmbedding(self.weapon_embed, self.rank_embed, self.sub_weapon_embed, self.special_weapon_embed),
-            PlayerEmbedding(self.weapon_embed, self.rank_embed, self.sub_weapon_embed, self.special_weapon_embed),
-            PlayerEmbedding(self.weapon_embed, self.rank_embed, self.sub_weapon_embed, self.special_weapon_embed),
-            PlayerEmbedding(self.weapon_embed, self.rank_embed, self.sub_weapon_embed, self.special_weapon_embed),
+            self.a_player_1, self.a_player_2, self.a_player_3, self.a_player_4
             ]
         
+        self.b_player_1 = PlayerEmbedding(self.weapon_embed, self.rank_embed, self.sub_weapon_embed, self.special_weapon_embed)
+        self.b_player_2 = PlayerEmbedding(self.weapon_embed, self.rank_embed, self.sub_weapon_embed, self.special_weapon_embed)
+        self.b_player_3 = PlayerEmbedding(self.weapon_embed, self.rank_embed, self.sub_weapon_embed, self.special_weapon_embed)
+        self.b_player_4 = PlayerEmbedding(self.weapon_embed, self.rank_embed, self.sub_weapon_embed, self.special_weapon_embed)
         self.b_players = [
-            PlayerEmbedding(self.weapon_embed, self.rank_embed, self.sub_weapon_embed, self.special_weapon_embed),
-            PlayerEmbedding(self.weapon_embed, self.rank_embed, self.sub_weapon_embed, self.special_weapon_embed),
-            PlayerEmbedding(self.weapon_embed, self.rank_embed, self.sub_weapon_embed, self.special_weapon_embed),
-            PlayerEmbedding(self.weapon_embed, self.rank_embed, self.sub_weapon_embed, self.special_weapon_embed),
+            self.b_player_1, self.b_player_2, self.b_player_3, self.b_player_4
         ]
         
         self.player_dim = self.a_players[0].n_dim
@@ -196,39 +198,48 @@ class SimpleTransformer(nn.Module):
         self.mode_dim = self.mode_embed.embedding_dim
         self.stage_dim = self.stage_embed.embedding_dim
         
+        self.ts_block_1 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+        self.ts_block_2 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+        self.ts_block_3 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+        self.ts_block_4 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+        self.ts_block_5 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+        self.ts_block_6 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+        
+        if self.size == 'normal':
+            self.ts_block_7 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+            self.ts_block_8 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+            self.ts_block_9 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+            self.ts_block_10 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+            self.ts_block_11 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+            self.ts_block_12 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+        
+        if self.size == 'large':
+            self.ts_block_13 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+            self.ts_block_14 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+            self.ts_block_15 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+            self.ts_block_16 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+            self.ts_block_17 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+            self.ts_block_18 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+            self.ts_block_19 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+            self.ts_block_20 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+            self.ts_block_21 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+            self.ts_block_22 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+            self.ts_block_23 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+            self.ts_block_24 = TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim)
+            
         self.transformer_blocks = [
-            TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
-            TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
-            TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
-            TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
-            TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
-            TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
+            self.ts_block_1, self.ts_block_2, self.ts_block_3, self.ts_block_4, self.ts_block_5, self.ts_block_6
         ]
         
         if self.size == 'normal':
             self.transformer_blocks += [
-                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
-                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
-                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
-                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
-                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
-                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
+                self.ts_block_7, self.ts_block_8, self.ts_block_9, self.ts_block_10, self.ts_block_11, self.ts_block_12
             ]
             
         if self.size == 'large':
             self.transformer_blocks += [
-                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
-                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
-                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
-                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
-                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
-                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
-                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
-                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
-                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
-                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
-                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
-                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
+                self.ts_block_13, self.ts_block_14, self.ts_block_15, self.ts_block_16, self.ts_block_17, self.ts_block_18,
+                self.ts_block_19, self.ts_block_20, self.ts_block_21, self.ts_block_22, self.ts_block_23, self.ts_block_24,
             ]
             
         
