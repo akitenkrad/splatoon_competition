@@ -214,6 +214,23 @@ class SimpleTransformer(nn.Module):
                 TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
                 TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
             ]
+            
+        if self.size == 'large':
+            self.transformer_blocks += [
+                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
+                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
+                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
+                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
+                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
+                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
+                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
+                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
+                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
+                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
+                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
+                TransformerBlock(self.player_dim, self.lobby_mode_dim, self.mode_dim, self.stage_dim),
+            ]
+            
         
         self.out = nn.Linear(self.lobby_mode_dim + self.mode_dim + self.stage_dim + self.player_dim * 2, 2)
         self.out_softmax = torch.nn.Softmax(dim=1)

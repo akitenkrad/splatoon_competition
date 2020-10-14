@@ -58,7 +58,7 @@ class History(object):
             self.epoch, self.loss, self.train_accuracy, self.train_f1, self.test_accuracy, self.test_f1)
         return desc
 
-def run_train(ds_path: str, weapon_ds_path:str, epochs: int, batch_size: int, test_size: float=0.1, checkpoint: str=''):
+def run_train(ds_path: str, size: str, weapon_ds_path:str, epochs: int, batch_size: int, test_size: float=0.1, checkpoint: str=''):
     
     # device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -81,7 +81,7 @@ def run_train(ds_path: str, weapon_ds_path:str, epochs: int, batch_size: int, te
     test_dl = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
     
     # prepare model, optimizer, criterion
-    model = SimpleTransformer(n_lobby_modes, n_modes, n_stages, n_weapons, n_sub_weapons, n_special_weapons, n_ranks)
+    model = SimpleTransformer(n_lobby_modes, n_modes, n_stages, n_weapons, n_sub_weapons, n_special_weapons, n_ranks, size=size)
     optimizer = optim.Adam(model.parameters(), lr=1e-8)
     criterion = nn.CrossEntropyLoss()
     
@@ -194,6 +194,7 @@ def run_train(ds_path: str, weapon_ds_path:str, epochs: int, batch_size: int, te
 def build_parser():
     parser = ArgumentParser()
     parser.add_argument('--ds-path', type=str, help='dataset path')
+    parser.add_argument('--size', type=str, help='model size. [small, normal, large]')
     parser.add_argument('--weapon-ds-path', type=str, help='weapon dataset path')
     parser.add_argument('--epochs', type=int, default=100, help='epochs. default=100')
     parser.add_argument('--batch-size', type=int, default=8, help='batch size. default=8')
@@ -206,5 +207,5 @@ def build_parser():
 if __name__ == '__main__':
     args = build_parser()
     
-    run_train(args.ds_path, args.weapon_ds_path, args.epochs, args.batch_size, args.test_size, args.checkpoint)
+    run_train(args.ds_path, args.size, args.weapon_ds_path, args.epochs, args.batch_size, args.test_size, args.checkpoint)
     
